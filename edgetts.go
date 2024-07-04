@@ -1,9 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,19 +60,44 @@ var (
 	wg              sync.WaitGroup
 	tasks           chan Task
 	lines           int
+	execPath        string
+	partPath        string
+	parts           *os.File
 )
 
 type Task struct {
-	line         int
-	text, output string
+	line                      int
+	text, storePath, savePath string
+}
+
+func addTask(id int, text string) {
+	if len(strings.TrimSpace(text)) == 0 {
+		fmt.Printf("Finished: %v/%v (empty)\n", id, lines)
+		return
+	}
+	fmt.Fprintf(parts, "file '%v'\n", fmt.Sprintf("%v.webm", id))
+	h := sha256.New()
+	h.Write(toBytes(fmt.Sprintf("%s|%s|", *voice, *rate)))
+	h.Write(toBytes(text))
+	label := h.Sum(nil)
+	storePath := fmt.Sprintf("%s/edgetts-store/%x", execPath, label)
+	savePath := fmt.Sprintf("%v/%v.webm", partPath, id)
+	if _, err := os.Stat(storePath); err == nil {
+		os.Symlink(storePath, savePath)
+		fmt.Printf("Finished: %v/%v (exist)\n", id, lines)
+		return
+	}
+	wg.Add(1)
+	tasks <- Task{id, text, storePath, savePath}
 }
 
 func main() {
 	flag.Parse()
+	execPath, _ = os.Executable()
+	execPath = filepath.Dir(execPath)
 
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		ex, _ := os.Executable()
-		localFFmpegPath = filepath.Dir(ex) + If(runtime.GOOS == "windows", "/ffmpeg-min.exe", "/ffmpeg-min")
+		localFFmpegPath = execPath + If(runtime.GOOS == "windows", "/ffmpeg-min.exe", "/ffmpeg-min")
 		if _, err := os.Stat(localFFmpegPath); err == nil {
 			useLocalFFmpeg = true
 			if *convert {
@@ -85,7 +110,7 @@ func main() {
 		}
 	}
 
-	buf, err := ioutil.ReadFile(*input)
+	buf, err := os.ReadFile(*input)
 	if err != nil {
 		if input == nil || *input == "" {
 			println("Use -h to get usage")
@@ -105,7 +130,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	paras := strings.Split(str(buf), If(strings.Contains(str(buf), "\r\n"), "\r\n", "\n"))
+	if err := os.MkdirAll("edgetts-store", os.ModePerm); err != nil {
+		panic(err)
+	}
+
+	paras := strings.Split(toString(buf), If(strings.Contains(toString(buf), "\r\n"), "\r\n", "\n"))
 
 	lines = len(paras)
 
@@ -113,35 +142,13 @@ func main() {
 		*parallel = uint(lines)
 	}
 
-	for i, para := range paras {
-		if len(para) > 3000 {
-			println("Too long for line", i+1)
-			os.Exit(1)
-		}
-	}
+	partPath = fmt.Sprintf("%s.%x", filepath.Base(*input), time.Now().UnixNano())
 
-	partDir := filepath.Base(*input) + ".parts"
-
-	if err := os.MkdirAll(partDir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(partPath, os.ModePerm); err != nil {
 		panic(err)
 	}
 
-	configPath := partDir + "/config"
-
-	stat, _ := os.Stat(*input)
-	newConfig := fmt.Sprintf("last-modify = %v\nvoice = %v\nrate = %v\n", stat.ModTime().Unix(), *voice, *rate)
-
-	if config, err := os.ReadFile(configPath); err == nil {
-		if newConfig == str(config) {
-			modified = false
-		}
-	}
-
-	if modified {
-		os.WriteFile(configPath, bytes(newConfig), 0666)
-	}
-
-	parts, err := os.Create(partDir + "/index")
+	parts, err = os.Create(partPath + "/index")
 	if err != nil {
 		panic(err)
 	}
@@ -153,24 +160,7 @@ func main() {
 	}
 
 	for i, para := range paras {
-		line := i + 1
-		if len(para) == 0 || len(strings.TrimSpace(para)) == 0 {
-			fmt.Printf("Finished: %v/%v (empty)\n", line, lines)
-			continue
-		}
-
-		fmt.Fprintf(parts, "file '%v'\n", fmt.Sprintf("%v.webm", line))
-		savePath := fmt.Sprintf("%v/%v.webm", partDir, line)
-
-		if !modified {
-			if _, err := os.Stat(savePath); err == nil {
-				fmt.Printf("Finished: %v/%v (skipped)\n", line, lines)
-				continue
-			}
-		}
-
-		wg.Add(1)
-		tasks <- Task{line, para, savePath}
+		addTask(i+1, para)
 		if *parallel == 1 {
 			wg.Wait()
 		}
@@ -181,12 +171,12 @@ func main() {
 
 	var cmd *exec.Cmd
 	if *convert {
-		cmd = exec.Command(If(useLocalFFmpeg, localFFmpegPath, "ffmpeg"), "-y", "-f", "concat", "-i", partDir+"/index", *output)
+		cmd = exec.Command(If(useLocalFFmpeg, localFFmpegPath, "ffmpeg"), "-y", "-f", "concat", "-i", partPath+"/index", *output)
 	} else {
-		cmd = exec.Command(If(useLocalFFmpeg, localFFmpegPath, "ffmpeg"), "-y", "-f", "concat", "-i", partDir+"/index", "-c", "copy", *output)
+		cmd = exec.Command(If(useLocalFFmpeg, localFFmpegPath, "ffmpeg"), "-y", "-f", "concat", "-i", partPath+"/index", "-c", "copy", *output)
 	}
 	output, _ := cmd.CombinedOutput()
-	fmt.Println(str(output))
+	fmt.Println(toString(output))
 }
 
 func worker() {
@@ -204,17 +194,18 @@ func worker() {
 			time.Sleep(time.Second * 3)
 			audioData, err = tts.GetAudio(ssml, "webm-24khz-16bit-mono-opus")
 		}
-		os.WriteFile(task.output, audioData, 0666)
+		os.WriteFile(task.storePath, audioData, 0666)
+		os.Symlink(task.storePath, task.savePath)
 		fmt.Printf("Finished: %v/%v\n", task.line, lines)
 		wg.Done()
 	}
 }
 
-func str(bytes []byte) string {
+func toString(bytes []byte) string {
 	return *(*string)(unsafe.Pointer(&bytes))
 }
 
-func bytes(s string) []byte {
+func toBytes(s string) []byte {
 	header := (*reflect.StringHeader)(unsafe.Pointer(&s))
 	return *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
 		Data: header.Data,
