@@ -15,7 +15,8 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
-	"github.com/jing332/tts-server-go/tts/edge"
+	"github.com/CuteLicense/tts-server-go/tts/edge"
+
 )
 
 var (
