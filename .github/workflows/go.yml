@@ -26,10 +26,10 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y ffmpeg
         
-    - name: Build
-      run: |
-        chmod +x build.sh
-        ./build.sh
+    #- name: Build
+    #  run: |
+    #    chmod +x build.sh
+    #    ./build.sh
                
     - name: Check and init Go module
       run: |
@@ -43,7 +43,7 @@ jobs:
         
     - name: Build for Windows
       run: |
-        GOOS=windows GOARCH=amd64 go build -o edgetts.exe
+        GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o edgetts.exe
       working-directory: ${{ github.workspace }}
 
     - name: List all cruuent files and directories
@@ -58,8 +58,8 @@ jobs:
       
     - name: Set date variable
       run: |
-        $date = Get-Date -Format "_yyyyMMdd"
-        echo "ARTIFACT_NAME=edgetts-$date" | Out-File -FilePath $env:GITHUB_ENV -Encoding UTF8 -Append
+        $date = Get-Date -Format "yyyyMMdd"
+        echo "ARTIFACT_NAME=edgetts_$date" | Out-File -FilePath $env:GITHUB_ENV -Encoding UTF8 -Append
       shell: pwsh
     
     - name: Upload artifact
