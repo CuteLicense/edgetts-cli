@@ -46,6 +46,9 @@ jobs:
         GOOS=windows GOARCH=amd64 go build -o edgetts.exe
       working-directory: ${{ github.workspace }}
 
+    - name: List all cruuent files and directories
+      run: ls -R
+      
     - name: Set date variable
       run: |
         $date = Get-Date -Format "_yyyyMMdd"
