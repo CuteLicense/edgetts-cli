@@ -46,4 +46,14 @@ jobs:
         GOOS=windows GOARCH=amd64 go build -o edgetts.exe
       working-directory: ${{ github.workspace }}
 
-
+    - name: Set date variable
+      run: |
+        $date = Get-Date -Format "_yyyyMMdd"
+        echo "ARTIFACT_NAME=edgetts-$date" | Out-File -FilePath $env:GITHUB_ENV -Encoding UTF8 -Append
+      shell: pwsh
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.ARTIFACT_NAME }}
+        path: ${{ github.workspace }}\edgetts.exe
