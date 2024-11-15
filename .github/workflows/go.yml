@@ -30,10 +30,16 @@ jobs:
       run: |
         chmod +x build.sh
         ./build.sh
+
+    - name: Check and init Go module
+      run: |
+        if [ ! -f go.mod ]; then
+          go mod init edgetts-cli
+        fi
         
     - name: Build for Windows
       run: |
-        GOOS=windows GOARCH=amd64 go build -o edgetts-cli.exe
+        GOOS=windows GOARCH=amd64 go build -o edgetts.exe
       working-directory: ${{ github.workspace }}
 
 
