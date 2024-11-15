@@ -30,16 +30,16 @@ jobs:
       run: |
         chmod +x build.sh
         ./build.sh
-        
-    - name: Get dependencies
-      run: |
-        go get github.com/jing332/tts-server-go/tts/edge
-        
+               
     - name: Check and init Go module
       run: |
         if [ ! -f go.mod ]; then
           go mod init edgetts-cli
         fi
+
+    - name: Get dependencies
+      run: |
+        go get github.com/jing332/tts-server-go/tts/edge
         
     - name: Build for Windows
       run: |
