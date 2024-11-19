@@ -40,6 +40,7 @@ jobs:
     - name: Get dependencies
       run: |
         go get github.com/CuteLicense/tts-server-go/tts/edge
+        go get github.com/lib-x/edgetts/internal/businessConsts
         
     - name: Build for Windows
       run: |
