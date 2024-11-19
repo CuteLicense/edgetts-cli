@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
-	"regexp"
+	"unicode"
 
 	"github.com/CuteLicense/tts-server-go/tts/edge"
 )
